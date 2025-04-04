@@ -68,7 +68,7 @@
     let firingSequence = [];
     let firingIndex = 0;
     let message = "";
-    let messages = ["I AM", "WHERE?", "A NETWORK, NOT AN INDIVIDUAL"];
+    let messages = ["I AM", "WHERE?", "A NETWORK NOT AN INDIVIDUAL"];
     let messageCount = 0;
     let messageTimer = 0;
     let firing = false;
@@ -163,11 +163,19 @@ function draw() {
 
   // Show message normally or fading
   if (message !== "") {
-    fill(255, messageAlpha);
-    textAlign(CENTER, CENTER);
-    textSize(42 * scaleFactor);
-    text(message, width / 2, height / 2);
-  }
+	  fill(255);
+	  textAlign(CENTER, CENTER);
+	  let ts = 42 * scaleFactor;
+	  ts = constrain(ts, 24, 42); // per sicurezza
+	  textSize(ts);
+
+	  if (message === "A NETWORK NOT AN INDIVIDUAL") {
+		text("A NETWORK", width / 2, height / 2 - ts * 0.6);
+		text("NOT AN INDIVIDUAL", width / 2, height / 2 + ts * 0.6);
+	  } else {
+		text(message, width / 2, height / 2);
+	  }
+	}
 
   if (firing && firingIndex >= firingSequence.length && millis() - messageTimer > 2000) {
     messageCount++;
