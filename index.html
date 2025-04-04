@@ -80,10 +80,15 @@
 	let messageAlpha = 255;
 	let fadeStartTime = 0;
 	let fadingMessage = false;
+	let scaleFactor = 1;
 
     function setup() {
       createCanvas(windowWidth, windowHeight);
 
+	  let screenW = displayWidth / pixelDensity();
+	  let screenH = displayHeight / pixelDensity();
+	  let isSmallScreen = screenW < 700 || screenH < 600;
+	  scaleFactor = isSmallScreen ? 1.5 : 1;
       for (let i = 0; i < 250; i++) {
         nodes.push({
           pos: createVector(random(width), random(height)),
@@ -149,10 +154,10 @@ function draw() {
   for (let node of nodes) {
     if (node.active) {
       fill(255, 255, 150);
-      ellipse(node.pos.x, node.pos.y, 10, 10);
+      ellipse(node.pos.x, node.pos.y, 10 * scaleFactor, 10 * scaleFactor);
     } else {
       fill(180, 200, 255);
-      ellipse(node.pos.x, node.pos.y, 4, 4);
+      ellipse(node.pos.x, node.pos.y, 4 * scaleFactor, 4 * scaleFactor);
     }
   }
 
@@ -160,7 +165,7 @@ function draw() {
   if (message !== "") {
     fill(255, messageAlpha);
     textAlign(CENTER, CENTER);
-    textSize(42);
+    textSize(42 * scaleFactor);
     text(message, width / 2, height / 2);
   }
 
