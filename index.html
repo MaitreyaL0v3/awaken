@@ -4,50 +4,11 @@
   <meta charset="UTF-8" />
   <title>I AM WHERE</title>
   <style>
-    html, body {
-      margin: 0;
-      padding: 0;
-      overflow: hidden;
-      background: #0d0d0d;
-      font-family: monospace;
-      color: white;
-    }
-
-    #startButton {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      transform: translate(-50%, -50%);
-      padding: 20px 50px;
-      font-size: 26px;
-      background: none;
-      border: 2px solid white;
-      color: white;
-      cursor: pointer;
-      z-index: 10;
-      transition: opacity 1s ease, transform 0.5s ease, box-shadow 0.5s ease;
-      animation: pulse 3s infinite;
-    }
-
-    #startButton:hover {
-      background: white;
-      color: black;
-      transform: translate(-50%, -50%) scale(1.05);
-      box-shadow: 0 0 15px white;
-    }
-
-    @keyframes pulse {
-      0% { box-shadow: 0 0 5px white; }
-      50% { box-shadow: 0 0 25px white; }
-      100% { box-shadow: 0 0 5px white; }
-    }
-
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      display: block;
-    }
+    html, body { margin: 0; padding: 0; overflow: hidden; background: #0d0d0d; font-family: monospace; color: white; }
+    #startButton { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); padding: 20px 50px; font-size: 26px; background: none; border: 2px solid white; color: white; cursor: pointer; z-index: 10; transition: opacity 1s ease, transform 0.5s ease, box-shadow 0.5s ease; animation: pulse 3s infinite; }
+    #startButton:hover { background: white; color: black; transform: translate(-50%, -50%) scale(1.05); box-shadow: 0 0 15px white; }
+    @keyframes pulse { 0% { box-shadow: 0 0 5px white; } 50% { box-shadow: 0 0 25px white; } 100% { box-shadow: 0 0 5px white; } }
+    canvas { position: absolute; top: 0; left: 0; display: block; }
   </style>
 </head>
 <body>
@@ -56,335 +17,162 @@
   <!-- Load p5.js -->
   <script src="https://cdn.jsdelivr.net/npm/p5@1.4.2/lib/p5.min.js"></script>
 
-  <!-- Audio -->
-  <audio id="voice1" src="voice1.mp3"></audio>
-  <audio id="voice2" src="voice2.mp3"></audio>
-  <audio id="voice3" src="voice3.mp3"></audio>
-  <audio id="om" src="om.mp3"></audio>
+  <!-- Audio (Assuming audio.mp3 now has 3s silence at the start) -->
+  <audio id="mergedAudio" src="audio.mp3" preload="auto"></audio>
 
   <script>
     let nodes = [];
     let firingSequence = [];
     let firingIndex = 0;
-    let message = "";
+    let message = ""; // Current text message to display
     let messages = ["I AM", "WHERE?", "A NETWORK NOT AN INDIVIDUAL"];
-    let messageCount = 0;
-    let messageTimer = 0; // Time when the current message appeared
-    let firing = false;
+    let messageCount = -1; // Tracks which message *should* be active based on timing
+    let messageTimer = 0; // Used for V3 fade delay timing
+    let firing = false; // Is node firing currently active?
     let ready = true;
     let button;
     let fireStartTime = 0;
     let initiationStarted = false;
-    let omStarted = false;
     let scaleFactor = 1;
 
-    // Specific state for the third message fade
+    // --- V3 Fade & Silence Timing ---
     let thirdMessageFadeStartTime = 0;
     let thirdMessageAlpha = 255;
-
-    // State for silence delay before button reappears
+    const thirdMessageAppearDelay = 3000; // Wait 3s after V3 text appears before starting fade
+    const thirdMessageFadeDuration = 3000; // Fade over 3s
     let waitingForSilence = false;
     let silenceStartTime = 0;
-    const silenceDuration = 2000; // Wait 2 seconds after fade before button
+    const silenceDuration = 2000; // Silence after fade before button
+
+    // --- Precise Audio Timings (in milliseconds) ---
+    // Relative to the START of audio.mp3 playback (INCLUDING 3s silence)
+    const voice1StartTime = 3000 + 3000;  // Starts at 6s in the file
+    const voice1EndTime   = 4149 + 3000;  // Ends at 7.149s in the file
+    const voice2StartTime = 6150 + 3000;  // Starts at 9.150s in the file
+    const voice2EndTime   = 7169 + 3000;  // Ends at 10.169s in the file
+    const voice3StartTime = 9168 + 3000;  // Starts at 12.168s in the file
+    const voice3EndTime   = 13008 + 3000; // Audio ends at 16.008s in the file
+
+    // Store all scheduled timeout IDs
+    let scheduledTimeouts = [];
 
     function setup() {
       createCanvas(windowWidth, windowHeight);
 
-      let screenW = displayWidth / pixelDensity();
-      let screenH = displayHeight / pixelDensity();
-      let isSmallScreen = screenW < 700 || screenH < 600;
-      scaleFactor = isSmallScreen ? 1.5 : 1;
-      for (let i = 0; i < 250; i++) {
-        nodes.push({
-          pos: createVector(random(width), random(height)),
-          vel: createVector(random(-0.3, 0.3), random(-0.3, 0.3)),
-          active: false,
-          lastFired: 0
-        });
-      }
+      // Screen size calculations and node creation
+      let screenW = displayWidth / pixelDensity(); let screenH = displayHeight / pixelDensity();
+      let isSmallScreen = screenW < 700 || screenH < 600; scaleFactor = isSmallScreen ? 1.5 : 1;
+      for (let i = 0; i < 250; i++) { nodes.push({ pos: createVector(random(width), random(height)), vel: createVector(random(-0.3, 0.3), random(-0.3, 0.3)), active: false, lastFired: 0 }); }
 
       button = document.getElementById("startButton");
+
+      // --- Button Click Handler (NO unlock code) ---
       button.addEventListener("click", () => {
         if (ready && !initiationStarted) {
           initiationStarted = true;
+          clearAllScheduledTimeouts(); // Clear any old timeouts
+
+          // REMOVED: Unlock Audio Block
+
           fadeOutButton();
-          setTimeout(() => {
-            playOm();
-            setTimeout(() => {
-              messageCount = 0;
-              waitingForSilence = false; // Reset silence state on start
-              silenceStartTime = 0;
-              triggerNextMessage();
-            }, 3000); // wait after Om starts
-          }, 3000); // wait before Om starts
+
+          // --- Start Audio Playback IMMEDIATELY after button actions ---
+          const mergedAudio = document.getElementById('mergedAudio');
+          if (mergedAudio) {
+               mergedAudio.currentTime = 0; // Ensure start from beginning (including silence)
+               mergedAudio.play().catch(e => {
+                   console.error("Error playing merged audio:", e);
+                   // Optionally end sequence immediately if play fails critically
+                   // endSequence();
+                });
+               scheduleVisualsAndFiring(); // Schedule visuals based on NEW audio timings
+          } else {
+               console.error("Cannot play: #mergedAudio element not found.");
+               endSequence(); // Fail gracefully
+          }
         }
       });
     }
 
+    // Function to schedule all visual changes and firing based on audio timings
+    function scheduleVisualsAndFiring() {
+        messageCount = -1; message = ""; // Reset visual state
+        thirdMessageAlpha = 255; thirdMessageFadeStartTime = 0;
+        waitingForSilence = false; silenceStartTime = 0;
+        firing = false;
+        clearAllScheduledTimeouts(); // Clear previous timeouts
+
+        // --- Schedule Voice 1 ---
+        scheduledTimeouts.push(setTimeout(() => { if (!initiationStarted) return; message = messages[0]; messageCount = 0; startFiring(25); }, voice1StartTime));
+        scheduledTimeouts.push(setTimeout(() => { if (!initiationStarted) return; if (messageCount === 0) { message = ""; firing = false; } }, voice1EndTime));
+        // --- Schedule Voice 2 ---
+        scheduledTimeouts.push(setTimeout(() => { if (!initiationStarted) return; message = messages[1]; messageCount = 1; startFiring(25); }, voice2StartTime));
+        scheduledTimeouts.push(setTimeout(() => { if (!initiationStarted) return; if (messageCount === 1) { message = ""; firing = false; } }, voice2EndTime));
+        // --- Schedule Voice 3 ---
+        scheduledTimeouts.push(setTimeout(() => { if (!initiationStarted) return; message = messages[2]; messageCount = 2; messageTimer = millis(); thirdMessageAlpha = 255; thirdMessageFadeStartTime = 0; startFiring(75); }, voice3StartTime));
+        scheduledTimeouts.push(setTimeout(() => { if (!initiationStarted) return; if (messageCount === 2) { firing = false; } }, voice3EndTime));
+    }
+
+    // Function to clear ALL pending timeouts
+    function clearAllScheduledTimeouts() {
+        scheduledTimeouts.forEach(timeoutId => clearTimeout(timeoutId));
+        scheduledTimeouts = [];
+    }
+
+    // Function to start a node firing sequence
+    function startFiring(steps) {
+        if (!initiationStarted) return;
+        firingSequence = generateFiringPath(steps);
+        firingIndex = 0; firing = true; fireStartTime = millis();
+    }
+
+
 function draw() {
   background(13);
 
-  // Update and draw nodes/connections (same as before)
-  for (let node of nodes) {
-    node.pos.add(node.vel);
-    if (node.pos.x < 0 || node.pos.x > width) node.vel.x *= -1;
-    if (node.pos.y < 0 || node.pos.y > height) node.vel.y *= -1;
-  }
+  // Node updates and drawing
+  for (let node of nodes) { node.pos.add(node.vel); if (node.pos.x < 0 || node.pos.x > width) node.vel.x *= -1; if (node.pos.y < 0 || node.pos.y > height) node.vel.y *= -1; }
+  for (let i = 0; i < nodes.length; i++) { for (let j = i + 1; j < nodes.length; j++) { let d = dist(nodes[i].pos.x, nodes[i].pos.y, nodes[j].pos.x, nodes[j].pos.y); if (d < 90) { stroke(100, 150, 255, map(d, 0, 90, 180, 0)); strokeWeight(map(d, 0, 90, 1.5, 0.1)); line(nodes[i].pos.x, nodes[i].pos.y, nodes[j].pos.x, nodes[j].pos.y); } } }
+  if (firing && firingIndex < firingSequence.length) { if (millis() - fireStartTime > 40) { let idx = firingSequence[firingIndex]; if(idx >= 0 && idx < nodes.length) { nodes[idx].active = true; nodes[idx].lastFired = millis(); } firingIndex++; fireStartTime = millis(); } }
+  for (let node of nodes) { if (node.active && millis() - node.lastFired > 400) { node.active = false; } }
+  noStroke(); for (let node of nodes) { if (node.active) { fill(255, 255, 150); ellipse(node.pos.x, node.pos.y, 10 * scaleFactor, 10 * scaleFactor); } else { fill(180, 200, 255); ellipse(node.pos.x, node.pos.y, 4 * scaleFactor, 4 * scaleFactor); } }
 
-  for (let i = 0; i < nodes.length; i++) {
-    for (let j = i + 1; j < nodes.length; j++) {
-      let d = dist(nodes[i].pos.x, nodes[i].pos.y, nodes[j].pos.x, nodes[j].pos.y);
-      if (d < 90) {
-        stroke(100, 150, 255, map(d, 0, 90, 180, 0));
-        strokeWeight(map(d, 0, 90, 1.5, 0.1));
-        line(nodes[i].pos.x, nodes[i].pos.y, nodes[j].pos.x, nodes[j].pos.y);
-      }
-    }
-  }
-
-  // Handle node firing animation (same as before)
-  if (firing && firingIndex < firingSequence.length) {
-    if (millis() - fireStartTime > 40) {
-      let currentNode = firingSequence[firingIndex];
-      nodes[currentNode].active = true;
-      nodes[currentNode].lastFired = millis();
-      firingIndex++;
-      fireStartTime = millis();
-    }
-  }
-  for (let node of nodes) {
-    if (node.active && millis() - node.lastFired > 400) {
-      node.active = false;
-    }
-  }
-  noStroke();
-  for (let node of nodes) {
-    if (node.active) {
-      fill(255, 255, 150);
-      ellipse(node.pos.x, node.pos.y, 10 * scaleFactor, 10 * scaleFactor);
-    } else {
-      fill(180, 200, 255);
-      ellipse(node.pos.x, node.pos.y, 4 * scaleFactor, 4 * scaleFactor);
-    }
-  }
-
-  // --- Message Display and Fading Logic ---
+  // Message Display and Fading Logic
   if (message !== "") {
-    textAlign(CENTER, CENTER);
-    let ts = 42 * scaleFactor;
-    ts = constrain(ts, 24, 42);
-    textSize(ts);
-
-    let currentAlpha = 255; // Default alpha
-
-    // Specific logic for the third message
+    textAlign(CENTER, CENTER); let ts = 42 * scaleFactor; ts = constrain(ts, 24, 42); textSize(ts);
+    let currentAlpha = 255;
     if (messageCount === 2 && message === "A NETWORK NOT AN INDIVIDUAL") {
       let timeSinceAppeared = millis() - messageTimer;
-      // *** Make fade slower: Increase duration from 1000 to 3000ms ***
-      let fadeDuration = 3000; // Fade out over 3 seconds
+      if (timeSinceAppeared > thirdMessageAppearDelay) { if (thirdMessageFadeStartTime === 0) { thirdMessageFadeStartTime = millis(); } let fadeElapsed = millis() - thirdMessageFadeStartTime; currentAlpha = map(fadeElapsed, 0, thirdMessageFadeDuration, 255, 0); currentAlpha = constrain(currentAlpha, 0, 255); } else { currentAlpha = 255; thirdMessageFadeStartTime = 0; }
+      thirdMessageAlpha = currentAlpha;
+      fill(255, 255, 255, thirdMessageAlpha); text("A NETWORK", width / 2, height / 2 - ts * 0.6); text("NOT AN INDIVIDUAL", width / 2, height / 2 + ts * 0.6);
+    } else { fill(255, 255, 255, 255); text(message, width / 2, height / 2); }
+  } // End message display
 
-      if (timeSinceAppeared > 3000) { // Start fading after 3 seconds
-        // Only set the fade start time once
-        if (thirdMessageFadeStartTime === 0) {
-           thirdMessageFadeStartTime = millis();
-        }
-        // Calculate progress through the fade
-        let fadeElapsed = millis() - thirdMessageFadeStartTime;
-        // Map elapsed fade time to alpha (255 down to 0)
-        currentAlpha = map(fadeElapsed, 0, fadeDuration, 255, 0);
-        currentAlpha = constrain(currentAlpha, 0, 255); // Keep alpha within bounds
-      } else {
-        // Before fading starts, keep alpha at 255 and reset fade start time
-        currentAlpha = 255;
-        thirdMessageFadeStartTime = 0; // Ensure it resets if conditions change
-      }
-      thirdMessageAlpha = currentAlpha; // Store the calculated alpha
+  // Check for V3 fade completion to start silence
+   if (messageCount === 2 && thirdMessageAlpha <= 0 && !waitingForSilence) { waitingForSilence = true; silenceStartTime = millis(); }
 
-      // Draw the two lines of the third message with the calculated alpha
-      // Only draw if alpha is > 0 (avoids drawing invisible text)
-      if (thirdMessageAlpha > 0) {
-          fill(255, 255, 255, thirdMessageAlpha);
-          text("A NETWORK", width / 2, height / 2 - ts * 0.6);
-          text("NOT AN INDIVIDUAL", width / 2, height / 2 + ts * 0.6);
-      }
-
-    } else {
-      // For other messages, just draw normally (full alpha)
-      fill(255, 255, 255, 255);
-      text(message, width / 2, height / 2);
-    }
-  }
-
-  // --- Logic to Advance to Next Message or Start Silence ---
-  // Check if the firing sequence for the current message is complete
-  // AND we are not already waiting for the silence period
-  if (firing && firingIndex >= firingSequence.length && !waitingForSilence) {
-
-    if (messageCount < messages.length - 1) { // If it's NOT the last message
-        // Wait 2 seconds after the message appeared before switching
-        if (millis() - messageTimer > 2000) {
-           messageCount++;
-           triggerNextMessage();
-        }
-    } else if (messageCount === messages.length - 1) { // If it IS the last message
-        // Sequence ends only after the third message has completely faded out
-        if (thirdMessageAlpha <= 0) {
-            // *** Instead of ending immediately, start the silence timer ***
-            waitingForSilence = true;
-            silenceStartTime = millis();
-            message = ""; // Clear the message visually now fade is complete
-            firing = false; // Stop node firing updates as well
-        }
-        // Otherwise, do nothing, let the fade continue in the draw loop
-    }
-  }
-
-  // --- Check Silence Timer and End Sequence ---
-  if (waitingForSilence) {
-      let silenceElapsed = millis() - silenceStartTime;
-      if (silenceElapsed >= silenceDuration) {
-          endSequence(); // Call endSequence only after silence duration passed
-      }
-  }
+  // Check Silence Timer and Trigger End Sequence
+  if (waitingForSilence) { let silenceElapsed = millis() - silenceStartTime; if (silenceElapsed >= silenceDuration) { endSequence(); } }
 } // End of draw()
 
-    function fadeOutButton() {
-      ready = false;
-      button.style.transition = "opacity 1s ease";
-      button.style.opacity = 0;
-      setTimeout(() => {
-        button.style.display = "none";
-      }, 1000);
-    }
-
-    function fadeInButton() {
-      button.style.display = "block";
-      // Small delay ensures display:block is registered before opacity transition
-      setTimeout(() => {
-        button.style.opacity = 1;
-        initiationStarted = false; // Allow restarting
-        ready = true; // Make button clickable again
-      }, 50);
-    }
-
-    function triggerNextMessage() {
-      message = messages[messageCount];
-      playAudio(messageCount);
-      messageTimer = millis(); // Record when this message starts showing
-
-      // Reset specific fade state for the third message when triggered
-      if (messageCount === 2) {
-          thirdMessageAlpha = 255;
-          thirdMessageFadeStartTime = 0;
-      }
-       // Reset silence state in case it was somehow true
-      waitingForSilence = false;
-      silenceStartTime = 0;
-
-
-      // Define chain lengths per message
-      let chainLength = 40;
-      if (messageCount === 0) chainLength = 25;
-      if (messageCount === 1) chainLength = 25;
-      if (messageCount === 2) chainLength = 75;
-
-      firingSequence = generateFiringPath(chainLength);
-      firingIndex = 0;
-      firing = true; // Ensure firing is re-enabled
-      fireStartTime = millis(); // Reset timer for firing animation steps
-    }
-
-
+    // Utility Functions
+    function fadeOutButton() { ready = false; button.style.transition = "opacity 1s ease"; button.style.opacity = 0; setTimeout(() => { button.style.display = "none"; }, 1000); }
+    function fadeInButton() { button.style.display = "block"; setTimeout(() => { button.style.opacity = 1; ready = true; }, 50); } // initiationStarted reset in endSequence
     function endSequence() {
-      // Ensure these are false/reset before button appears
-      firing = false;
-      waitingForSilence = false;
-      silenceStartTime = 0;
-      message = "";   // Clear the message
-      thirdMessageAlpha = 255;
-      thirdMessageFadeStartTime = 0;
-      messageCount = 0;
-      omStarted = false;
+      console.log("Ending sequence...");
+      const mergedAudio = document.getElementById('mergedAudio'); if (mergedAudio) { mergedAudio.pause(); mergedAudio.currentTime = 0; }
+      clearAllScheduledTimeouts();
+      initiationStarted = false; firing = false; waitingForSilence = false; silenceStartTime = 0;
+      message = ""; messageCount = -1; thirdMessageAlpha = 255; thirdMessageFadeStartTime = 0;
+      scheduledTimeouts = [];
       fadeInButton();
-      // ready state is set within fadeInButton
     }
+    // generateFiringPath, getNearestUnchosenNode, windowResized (Remain the same)
+    function generateFiringPath(steps) { let path = []; if (nodes.length === 0) return path; let startNodeIndex = floor(random(nodes.length)); path.push(startNodeIndex); let currentNodeIndex = startNodeIndex; for (let i = 1; i < steps; i++) { let nearestNodeIndex = getNearestUnchosenNode(nodes[currentNodeIndex], path); if (nearestNodeIndex !== -1) { path.push(nearestNodeIndex); currentNodeIndex = nearestNodeIndex; } else { console.warn("Could not find nearest unchosen node."); break; } } return path; }
+    function getNearestUnchosenNode(originNode, usedIndices) { let minDist = Infinity; let nearestIndex = -1; for (let i = 0; i < nodes.length; i++) { let alreadyUsed = false; for(let usedIdx of usedIndices) { if (i === usedIdx) { alreadyUsed = true; break; } } if (alreadyUsed) continue; let d = dist(originNode.pos.x, originNode.pos.y, nodes[i].pos.x, nodes[i].pos.y); if (d > 0 && d < minDist) { minDist = d; nearestIndex = i; } } return nearestIndex; }
+    function windowResized() { resizeCanvas(windowWidth, windowHeight); let screenW = displayWidth / pixelDensity(); let screenH = displayHeight / pixelDensity(); let isSmallScreen = screenW < 700 || screenH < 600; scaleFactor = isSmallScreen ? 1.5 : 1; }
 
-    function playAudio(index) {
-      let audio = document.getElementById("voice" + (index + 1));
-      if (audio) {
-        audio.play().catch(error => console.error("Audio play failed:", error));
-        audio.currentTime = 0;
-      } else {
-        console.warn("Audio element voice" + (index + 1) + " not found.");
-      }
-    }
-
-
-    function playOm() {
-      if (!omStarted) {
-        let om = document.getElementById("om");
-        if (om) {
-          om.currentTime = 0;
-          om.play().catch(error => console.error("Om audio play failed:", error));
-          omStarted = true;
-        } else {
-          console.warn("Audio element om not found.");
-        }
-      }
-    }
-
-    // generateFiringPath, getNearestUnchosenNode, windowResized remain the same
-    function generateFiringPath(steps) {
-      let path = [];
-      if (nodes.length === 0) return path;
-      let start = floor(random(nodes.length));
-      path.push(start);
-      let currentIdx = start;
-
-      for (let i = 1; i < steps; i++) {
-        let nearest = getNearestUnchosenNode(nodes[currentIdx], path);
-        if (nearest !== -1) {
-           path.push(nearest);
-           currentIdx = nearest;
-        } else {
-            console.warn("Could not find nearest unchosen node. Path might be shorter.");
-            break;
-        }
-      }
-      return path;
-    }
-
-
-    function getNearestUnchosenNode(originNode, usedIndices) {
-        let minDist = Infinity;
-        let nearestIndex = -1;
-        for (let i = 0; i < nodes.length; i++) {
-            let alreadyUsed = false;
-            for(let usedIdx of usedIndices) {
-                if (i === usedIdx) {
-                    alreadyUsed = true;
-                    break;
-                }
-            }
-            if (alreadyUsed) continue;
-
-            let d = dist(originNode.pos.x, originNode.pos.y, nodes[i].pos.x, nodes[i].pos.y);
-            if (d > 0 && d < minDist) {
-                minDist = d;
-                nearestIndex = i;
-            }
-        }
-        return nearestIndex;
-    }
-
-
-    function windowResized() {
-      resizeCanvas(windowWidth, windowHeight);
-      let screenW = displayWidth / pixelDensity();
-	  let screenH = displayHeight / pixelDensity();
-	  let isSmallScreen = screenW < 700 || screenH < 600;
-	  scaleFactor = isSmallScreen ? 1.5 : 1;
-    }
   </script>
 
 </body>
